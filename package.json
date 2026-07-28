@@ -1,6 +1,6 @@
 {
     "name": "node-red-contrib-joe-tools",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "repository": {
         "type": "git",
         "url": "https://github.com/JoeHuang0606/Node-Red-For-Industry-4.0.git"
