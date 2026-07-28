@@ -44,6 +44,7 @@ npm install node-red-contrib-joe-tools
 | **Joe 壓力表解析器** | `joe-pressure-parser` | 解析 SMC 壓力表 (ISE20B/ZSE20B/ZSE20BF) 壓力值與開關狀態 | [README](./joe-pressure-parser/README.md) |
 | **Joe 流量表解析器** | `joe-flow-parser` | 解析 SMC 流量計 2 個暫存器，計算實際流量與硬體診斷狀態 | [README](./joe-flow-parser/README.md) |
 | **Joe 超聲波解析器** | `joe-ultrasonic-parser` | 支援 Modbus (除以 1024) 與 MQTT 2-Byte (除以 4) 距離解析 | [README](./joe-ultrasonic-parser/README.md) |
+| **Omron 電力計解析器** | `joe-power-parser` | 解析 Omron 電力計電壓/電流原始值並自動計算功率 (W) | [README](./joe-power-parser/README.md) |
 
 ### 🔌 PLC 通訊與 RFID
 

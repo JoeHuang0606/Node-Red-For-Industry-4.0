@@ -1,0 +1,49 @@
+<script type="text/javascript">
+    RED.nodes.registerType('joe-power-parser',{
+        category: 'Joe-Tools',
+        color: '#E6B422',
+        defaults: {
+            name: {value:""}
+        },
+        inputs:1,
+        outputs:1,
+        icon: "font-awesome/fa-bolt",
+        label: function() {
+            return this.name || "Omron 電力計解析器";
+        },
+        paletteLabel: "Omron 電力計"
+    });
+</script>
+
+<script type="text/html" data-template-name="joe-power-parser">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark select,
+        .red-ui-editor-theme-dark textarea,
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] select,
+        [data-theme="dark"] textarea {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="joe-power-parser">
+    <p>解析 Omron 電力計 Modbus 讀取的 3 個暫存器數據（狀態、電壓、電流），自動計算功率 (W)。</p>
+    <h3>輸入：</h3>
+    <p><code>msg.payload</code>：包含 3 個暫存器的陣列，例如 <code>[status, voltage_raw, current_raw]</code>。</p>
+    <p>暫存器原始值範圍 0~9990 對應實際值 0.00~99.90。</p>
+    <h3>輸出：</h3>
+    <p><code>msg.payload</code> 物件，包含：</p>
+    <ul>
+        <li><code>Voltage_V</code>: 電壓 (V)，例如 <code>22.05</code></li>
+        <li><code>Current_A</code>: 電流 (A)，例如 <code>3.50</code></li>
+        <li><code>Power_W</code>: 功率 (W)，例如 <code>77.2</code></li>
+    </ul>
+</script>
