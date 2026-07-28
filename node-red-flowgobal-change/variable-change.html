@@ -1,0 +1,504 @@
+<script type="text/javascript">
+    RED.nodes.registerType('variable-change',{
+        category: 'Joe-Tools',
+        color: '#6699cc',
+        defaults: {
+            name: {value:""},
+            mode: {value:"realtime"},
+            initData: {value:"[]"}
+        },
+        inputs:1,
+        outputs:1,
+        icon: "arrow-in-out.png",
+        label: function() {
+            return this.name || "全自動變數管理";
+        },
+        oneditprepare: function() {
+            var node = this;
+            
+            // 人性化 JSON 轉譯器 (允許單引號、無引號 key、結尾逗號等寬鬆寫法)
+            function parseRelaxedJSON(str) {
+                if (!str || str.trim() === "") return undefined;
+                return (new Function("return " + str.trim()))();
+            }
+            
+            // 建立列的 HTML (支援深色/淺色模式自適應)
+            function createRowHtml(v, scope) {
+                var displayVal = (typeof v.value === 'object') ? JSON.stringify(v.value) : v.value;
+                if(displayVal === undefined) displayVal = "";
+                var isJson = (v.type === 'object' || v.type === 'json');
+                var currentMode = $("#node-input-mode").val();
+                
+                // 按鈕文字依據模式改變
+                var saveText = currentMode === 'init' ? "✓ 確認" : "💾 寫入";
+                var saveColor = currentMode === 'init' ? "#2196f3" : "#4caf50";
+
+                return `
+                    <tr class="var-main-row" data-scope="${scope}">
+                        <td class="drag-handle" style="padding:6px; cursor:grab; text-align:center; color:#999;" title="按住拖曳排序"><i class="fa fa-bars"></i></td>
+                        
+                        <td style="padding:6px;"><span class="scope-tag">${scope.toUpperCase()}</span></td>
+                        <td style="padding:6px;"><input type="text" class="var-key-input" value="${v.key}" data-original="${v.key}" style="width:90%;"></td>
+                        <td style="padding:6px; display:flex; align-items:center;">
+                            <input type="text" class="var-val-input" value='${displayVal}' style="width:calc(100% - 35px);">
+                            <button type="button" class="btn btn-small edit-json-btn" title="放大編輯 JSON/陣列" style="display:${isJson ? 'inline-block' : 'none'}; margin-left:5px;"><i class="fa fa-expand"></i></button>
+                        </td>
+                        <td style="padding:6px;">
+                            <select class="var-type-select" style="width:90px;">
+                                <option value="string" ${v.type==='string'?'selected':''}>String</option>
+                                <option value="number" ${v.type==='number'?'selected':''}>Number</option>
+                                <option value="boolean" ${v.type==='boolean'?'selected':''}>Boolean</option>
+                                <option value="json" ${isJson?'selected':''}>JSON</option>
+                            </select>
+                        </td>
+                        <td style="padding:6px; text-align:center;">
+                            <button type="button" class="btn btn-small save-var-btn" style="background:${saveColor}; color:white; border:none; border-radius:4px; padding:4px 8px; margin-right:4px;">${saveText}</button>
+                            <button type="button" class="btn btn-small del-var-btn" style="background:#f44336; color:white; border:none; border-radius:4px; padding:4px 8px;"><i class="fa fa-trash"></i> 刪除</button>
+                        </td>
+                    </tr>
+                `;
+            }
+            
+            function refreshVariables() {
+                var currentMode = $("#node-input-mode").val();
+                $("#var-table-body").html('<tr><td colspan="6" style="text-align:center; padding:15px;">正在載入資料...</td></tr>');
+                
+                if (currentMode === 'init') {
+                    $("#init-mode-warning").show();
+                    $("#import-backend-btn").show(); 
+                } else {
+                    $("#init-mode-warning").hide();
+                    $("#import-backend-btn").hide();
+                }
+                
+                $.getJSON('variable-change/all', { nodeId: node.id }, function(data) {
+                    var container = $("#var-table-body").empty();
+                    var displayVars = [];
+
+                    if (currentMode === 'init') {
+                        try { displayVars = JSON.parse(node.initData || "[]"); } catch(e) {}
+                    } else {
+                        displayVars = data.flow.concat(data.global);
+                    }
+
+                    displayVars.forEach(function(v) {
+                        container.append(createRowHtml(v, v.scope));
+                    });
+                    
+                    if(displayVars.length === 0) {
+                        container.html('<tr><td colspan="6" style="text-align:center; color:#999; padding:15px;">目前沒有變數，請點擊上方按鈕新增！</td></tr>');
+                    }
+                    
+                    if ($.fn.sortable) {
+                        $("#var-table-body").sortable({
+                            handle: ".drag-handle",
+                            axis: "y",
+                            cursor: "grabbing",
+                            opacity: 0.8
+                        });
+                    }
+                }).fail(function(xhr) {
+                    $("#var-table-body").html(`<tr><td colspan="6" style="text-align:center; color:#ff9800; padding:15px;">
+                        <strong>提示：</strong> 請先點擊右上角的 <b>Deploy (部署)</b> 此節點，後台系統才能與之連線並讀取變數！
+                    </td></tr>`);
+                });
+            }
+
+            refreshVariables();
+
+            $("#node-input-mode").change(function() { refreshVariables(); });
+            
+            $("#import-backend-btn").click(function() {
+                if(confirm("這將會把系統當前所有的 Flow/Global 變數匯入到清單的最下方，確定匯入嗎？")) {
+                    $.getJSON('variable-change/all', { nodeId: node.id }, function(data) {
+                        var realTimeVars = data.flow.concat(data.global);
+                        var existingKeys = [];
+                        $("#var-table-body .var-main-row").each(function() {
+                            existingKeys.push($(this).data('scope') + '-' + $(this).find('.var-key-input').val());
+                        });
+                        
+                        var added = 0;
+                        realTimeVars.forEach(function(rt) {
+                            if (!existingKeys.includes(rt.scope + '-' + rt.key)) {
+                                $("#var-table-body").append(createRowHtml(rt, rt.scope));
+                                added++;
+                            }
+                        });
+                        if (added > 0) RED.notify(`已匯入 ${added} 個新變數，請記得確認修改。`, "success");
+                        else RED.notify("沒有發現不在清單中的新變數。", "info");
+                    });
+                }
+            });
+
+            // ---------------- [ 人性化 JSON 展開編輯邏輯 ] ----------------
+            $(document).on('change', '.var-type-select, .new-var-type', function() {
+                var btn = $(this).closest('tr').find('.edit-json-btn');
+                if ($(this).val() === 'json') btn.show();
+                else { btn.hide(); $(this).closest('tr').next('.json-editor-row').remove(); }
+            });
+
+            $(document).off('click', '.edit-json-btn').on('click', '.edit-json-btn', function() {
+                var tr = $(this).closest('tr');
+                if (tr.next().hasClass('json-editor-row')) { tr.next().remove(); return; }
+                
+                var currentVal = tr.find('.var-val-input').val();
+                var formattedJson = currentVal;
+                try {
+                    var obj = parseRelaxedJSON(currentVal);
+                    if(obj !== undefined) {
+                        formattedJson = JSON.stringify(obj, null, 4);
+                    } else {
+                        formattedJson = "[\n    \n]"; 
+                    }
+                } catch(e) {}
+
+                var editorRow = $(`
+                    <tr class="json-editor-row">
+                        <td colspan="6" style="padding:10px 15px;">
+                            <div style="display:flex; justify-content:space-between; margin-bottom:8px; align-items:center;">
+                                <strong class="json-editor-title"><i class="fa fa-code"></i> JSON / 陣列人性化編輯器 (自動糾正格式)</strong>
+                                <button type="button" class="btn btn-small add-array-item-btn" style="background:#2196f3; color:white; border:none; padding:4px 10px;">
+                                    <i class="fa fa-plus"></i> 複製前筆格式
+                                </button>
+                            </div>
+                            <textarea class="json-edit-textarea" placeholder="在此處編輯。支援寬鬆格式 (如單引號、無引號 key)，儲存時會自動轉化為標準 JSON。" style="width:100%; height:200px; font-family:monospace; font-size:14px; padding:10px; border-radius:4px; resize:vertical;">${formattedJson}</textarea>
+                            <div style="text-align:right; margin-top:8px;">
+                                <button type="button" class="btn btn-small apply-json-btn" style="background:#4caf50; color:white; border:none; padding:5px 15px;"><i class="fa fa-check"></i> 確認修改並格式化</button>
+                            </div>
+                        </td>
+                    </tr>
+                `);
+                tr.after(editorRow);
+            });
+
+            $(document).off('click', '.apply-json-btn').on('click', '.apply-json-btn', function() {
+                var editorRow = $(this).closest('.json-editor-row');
+                var textareaVal = editorRow.find('.json-edit-textarea').val();
+                try {
+                    var obj = parseRelaxedJSON(textareaVal);
+                    var minified = JSON.stringify(obj); 
+                    var mainRow = editorRow.prev('.var-main-row');
+                    mainRow.find('.var-val-input').val(minified);
+                    editorRow.remove();
+                } catch(e) { 
+                    alert("語法解析嚴重錯誤，請檢查陣列/物件括號是否成對！\n錯誤: " + e.message); 
+                }
+            });
+
+            $(document).off('click', '.add-array-item-btn').on('click', '.add-array-item-btn', function() {
+                var textarea = $(this).closest('td').find('.json-edit-textarea');
+                try {
+                    var arr = parseRelaxedJSON(textarea.val()); 
+                    if (!Array.isArray(arr)) { alert("目前最外層不是陣列 [ ]，無法新增陣列項目！"); return; }
+                    if (arr.length === 0) arr.push({}); 
+                    else {
+                        var lastItem = arr[arr.length - 1];
+                        if (typeof lastItem === 'object' && lastItem !== null && !Array.isArray(lastItem)) {
+                            var newItem = {};
+                            for (var key in lastItem) {
+                                var valType = typeof lastItem[key];
+                                if (valType === 'string') newItem[key] = "";
+                                else if (valType === 'number') newItem[key] = 0;
+                                else if (valType === 'boolean') newItem[key] = false;
+                                else if (Array.isArray(lastItem[key])) newItem[key] = [];
+                                else newItem[key] = null;
+                            }
+                            arr.push(newItem);
+                        } else if (Array.isArray(lastItem)) arr.push([]);
+                        else arr.push(typeof lastItem === 'string' ? "" : (typeof lastItem === 'number' ? 0 : false));
+                    }
+                    textarea.val(JSON.stringify(arr, null, 4));
+                    textarea.scrollTop(textarea[0].scrollHeight);
+                } catch(e) { alert("文字區塊格式損毀過於嚴重，請先手動修復語法錯誤。"); }
+            });
+
+            // ---------------- [ 表格按鈕邏輯 ] ----------------
+            $("#add-var-btn").click(function() {
+                var newRow = $(`
+                    <tr class="var-main-row new-var-row">
+                        <td class="drag-handle" style="padding:6px; cursor:grab; text-align:center; color:#999;"><i class="fa fa-bars"></i></td>
+                        <td style="padding:6px;">
+                            <select class="new-var-scope" style="width:85px;">
+                                <option value="flow">FLOW</option>
+                                <option value="global">GLOBAL</option>
+                            </select>
+                        </td>
+                        <td style="padding:6px;"><input type="text" class="var-key-input new-var-key" placeholder="輸入變數名稱" style="width:90%;"></td>
+                        <td style="padding:6px; display:flex; align-items:center;">
+                            <input type="text" class="var-val-input new-var-val" placeholder="初始值" style="width:calc(100% - 35px);">
+                            <button type="button" class="btn btn-small edit-json-btn" title="放大編輯 JSON/陣列" style="display:none; margin-left:5px;"><i class="fa fa-expand"></i></button>
+                        </td>
+                        <td style="padding:6px;">
+                            <select class="var-type-select new-var-type" style="width:90px;">
+                                <option value="string">String</option>
+                                <option value="number">Number</option>
+                                <option value="boolean">Boolean</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </td>
+                        <td style="padding:6px; text-align:center;">
+                            <button type="button" class="btn btn-small submit-new-btn" style="background:#2196f3; color:white; border:none; border-radius:4px; padding:4px 8px; margin-right:4px;">✓ 確認</button>
+                            <button type="button" class="btn btn-small cancel-new-btn" style="background:#bbb; color:white; border:none; border-radius:4px; padding:4px 8px;"><i class="fa fa-times"></i></button>
+                        </td>
+                    </tr>
+                `);
+                $("#var-table-body").append(newRow);
+                
+                if ($.fn.sortable) $("#var-table-body").sortable('refresh');
+            });
+
+            $(document).off('click', '.save-var-btn').on('click', '.save-var-btn', function() {
+                var currentMode = $("#node-input-mode").val();
+                var row = $(this).closest('tr');
+                var scope = row.data('scope');
+                var oldKey = row.find('.var-key-input').data('original'); 
+                var newKey = row.find('.var-key-input').val().trim();     
+                var value = row.find('.var-val-input').val();
+                var type = row.find('.var-type-select').val();
+
+                if (!newKey) { alert("變數名稱不能為空！"); return; }
+                
+                if (type === 'json') {
+                    try {
+                        var obj = parseRelaxedJSON(value);
+                        value = JSON.stringify(obj); 
+                        row.find('.var-val-input').val(value); 
+                    } catch(e) {
+                        alert("JSON 語法解析錯誤！\n" + e.message); return;
+                    }
+                }
+
+                if (currentMode === 'init') {
+                    row.find('.var-key-input').data('original', newKey);
+                    RED.notify("已確認變更（請記得點擊 Node-RED 右上角部署）", "info");
+                } else {
+                    $.post('variable-change/save', { nodeId: node.id, scope: scope, oldKey: oldKey, key: newKey, value: value, type: type }, function() {
+                        RED.notify("即時寫入後台成功！", "success");
+                        row.find('.var-key-input').data('original', newKey);
+                    }).fail(function(err) { alert("寫入失敗: " + err.responseText); });
+                }
+            });
+
+            $(document).off('click', '.del-var-btn').on('click', '.del-var-btn', function() {
+                var currentMode = $("#node-input-mode").val();
+                var row = $(this).closest('tr');
+                var scope = row.data('scope');
+                var key = row.find('.var-key-input').data('original');
+
+                if (currentMode === 'init') {
+                    row.next('.json-editor-row').remove();
+                    row.remove();
+                } else {
+                    if (confirm(`確定要完全從系統中刪除 ${scope.toUpperCase()} 變數 [ ${key} ] 嗎？`)) {
+                        $.post('variable-change/delete', { nodeId: node.id, scope: scope, key: key }, function() {
+                            RED.notify("變數已即時刪除", "success");
+                            row.next('.json-editor-row').remove();
+                            row.remove();
+                        });
+                    }
+                }
+            });
+
+            $(document).off('click', '.submit-new-btn').on('click', '.submit-new-btn', function() {
+                var currentMode = $("#node-input-mode").val();
+                var row = $(this).closest('tr');
+                var scope = row.find('.new-var-scope').val();
+                var key = row.find('.new-var-key').val().trim();
+                var value = row.find('.new-var-val').val();
+                var type = row.find('.new-var-type').val();
+
+                if (!key) { alert("請輸入變數名稱！"); return; }
+                
+                if (type === 'json') {
+                    try {
+                        var obj = parseRelaxedJSON(value);
+                        value = JSON.stringify(obj); 
+                    } catch(e) {
+                        alert("JSON 語法解析錯誤！\n" + e.message); return;
+                    }
+                }
+
+                if (currentMode === 'init') {
+                    var newMainRow = createRowHtml({key: key, value: value, type: type}, scope);
+                    row.replaceWith(newMainRow);
+                } else {
+                    $.post('variable-change/save', { nodeId: node.id, scope: scope, oldKey: null, key: key, value: value, type: type }, function() {
+                        RED.notify("新變數已即時寫入！", "success");
+                        var newMainRow = createRowHtml({key: key, value: value, type: type}, scope);
+                        row.replaceWith(newMainRow);
+                    }).fail(function(err) { alert("寫入失敗: " + err.responseText); });
+                }
+            });
+
+            $(document).off('click', '.cancel-new-btn').on('click', '.cancel-new-btn', function() {
+                $(this).closest('tr').remove();
+            });
+        },
+        
+        oneditsave: function() {
+            var node = this;
+            var mode = $("#node-input-mode").val();
+            
+            if (mode === 'init') {
+                var initArr = [];
+                $("#var-table-body .var-main-row").each(function() {
+                    var scope = $(this).attr('data-scope');
+                    var key = $(this).find('.var-key-input').val().trim();
+                    var value = $(this).find('.var-val-input').val();
+                    var type = $(this).find('.var-type-select').val();
+                    if (key) {
+                        initArr.push({scope: scope, key: key, value: value, type: type});
+                    }
+                });
+                node.initData = JSON.stringify(initArr);
+            }
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="variable-change">
+    <style>
+        /* 基礎表格與元素樣式 */
+        .var-main-row {
+            border-bottom: 1px solid #ddd;
+            background-color: #ffffff;
+            color: #333333;
+        }
+        .new-var-row {
+            background-color: #f9fff9 !important;
+        }
+        .json-editor-row {
+            background-color: #f9f9f9;
+            border-bottom: 2px solid #ccc;
+        }
+        .json-editor-title {
+            color: #333333;
+        }
+        .scope-tag {
+            background: #eee;
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .var-table-head {
+            background: #f3f3f3;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+        }
+
+        /* 深色模式通用適配 (Node-RED Dark Theme Support) */
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark select,
+        .red-ui-editor-theme-dark textarea,
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] select,
+        [data-theme="dark"] textarea {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+
+        .red-ui-editor-theme-dark .var-main-row,
+        [data-theme="dark"] .var-main-row {
+            background-color: #242424 !important;
+            color: #e1e1e1 !important;
+            border-bottom-color: #444 !important;
+        }
+
+        .red-ui-editor-theme-dark .new-var-row,
+        [data-theme="dark"] .new-var-row {
+            background-color: #1d3323 !important;
+        }
+
+        .red-ui-editor-theme-dark .json-editor-row,
+        [data-theme="dark"] .json-editor-row {
+            background-color: #1a1a1a !important;
+            border-bottom-color: #555 !important;
+        }
+
+        .red-ui-editor-theme-dark .json-editor-title,
+        [data-theme="dark"] .json-editor-title {
+            color: #e1e1e1 !important;
+        }
+
+        .red-ui-editor-theme-dark .scope-tag,
+        [data-theme="dark"] .scope-tag {
+            background: #383838 !important;
+            color: #64b5f6 !important;
+        }
+
+        .red-ui-editor-theme-dark .var-table-head,
+        [data-theme="dark"] .var-table-head {
+            background: #333333 !important;
+            color: #ffffff !important;
+            border-bottom-color: #444 !important;
+        }
+
+        .red-ui-editor-theme-dark table,
+        [data-theme="dark"] table {
+            border-color: #444 !important;
+        }
+
+        .red-ui-editor-theme-dark #init-mode-warning,
+        [data-theme="dark"] #init-mode-warning {
+            background: #102a45 !important;
+            color: #90caf9 !important;
+            border-color: #1e4976 !important;
+        }
+    </style>
+
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-mode"><i class="fa fa-sliders"></i> 運作模式</label>
+        <select id="node-input-mode" style="width:70%;">
+            <option value="realtime">即時調整模式 (直接改動後台變數)</option>
+            <option value="init">初始化模式 (接收 Input 時再賦予值)</option>
+        </select>
+    </div>
+    <hr>
+    
+    <div id="init-mode-warning" style="display:none; background:#e8f4fd; color:#0d47a1; padding:10px; margin-bottom:15px; border-radius:4px; border:1px solid #b3d4fc;">
+        <i class="fa fa-info-circle"></i> <b>初始化嚴格模式：</b>
+        目前只會顯示並載入您在此設定過的變數（其他未設定的變數不會被自動帶入）。<br>
+        修改完畢後，請點擊外側的「完成」與「部署」，當流程進入此節點時才會寫入變數。
+    </div>
+
+    <div class="form-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+        <h4 style="margin:0;"><i class="fa fa-database"></i> 變數管理清單</h4>
+        <div>
+            <button type="button" class="btn" id="import-backend-btn" style="display:none; background:#ff9800; color:white; border:none; padding:5px 10px; margin-right:5px;"><i class="fa fa-download"></i> 匯入現有變數</button>
+            <button type="button" class="btn" id="add-var-btn" style="background:#6699cc; color:white; border:none; padding:5px 10px;"><i class="fa fa-plus"></i> 新增變數</button>
+        </div>
+    </div>
+    <div class="form-row">
+        <table style="width:100%; border: 1px solid #ccc; border-collapse:collapse; font-size:13px;">
+            <thead>
+                <tr class="var-table-head">
+                    <th style="padding:8px; width:5%; text-align:center;"><i class="fa fa-arrows-v"></i></th>
+                    <th style="padding:8px; width:10%;">範圍</th>
+                    <th style="padding:8px; width:22%;">變數名稱 (Key)</th>
+                    <th style="padding:8px; width:33%;">數值 (Value)</th>
+                    <th style="padding:8px; width:12%;">型態</th>
+                    <th style="padding:8px; width:18%; text-align:center;">操作</th>
+                </tr>
+            </thead>
+            <tbody id="var-table-body">
+            </tbody>
+        </table>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="variable-change">
+    <p>支援進階陣列與 JSON 修改的視覺化變數管理器。</p>
+    
+    <h3>💡 本次升級特色</h3>
+    <ul>
+        <li><b>拖曳排序：</b> 滑鼠按住最左側的三條線圖示 <i class="fa fa-bars"></i>，即可上下拖拉改變變數順序！系統會自動記憶你當前的順序。</li>
+        <li><b>初始化隔離：</b> 在初始化模式中，你刪除的變數絕對不會再幽靈般跑回來。若需要，可以點擊上方的「匯入現有變數」手動補充。</li>
+        <li><b>人性化 JSON：</b> 不必再寫死板的標準 JSON！你可以直接輸入 <code>[{name: 'Tom', age: 20}]</code>（無雙引號），按下寫入或確認後，系統會自動轉譯為嚴格標準格式。</li>
+    </ul>
+</script>

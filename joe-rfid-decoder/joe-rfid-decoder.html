@@ -1,0 +1,51 @@
+<script type="text/javascript">
+    RED.nodes.registerType('joe-rfid-decoder', {
+        category: 'Joe-Tools',
+        color: '#A6E22E',
+        defaults: {
+            name: { value: "" },
+            sliceCount: { value: 12, validate: RED.validators.number() },
+            paddingDigits: { value: 2, validate: RED.validators.number() }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-id-card-o",
+        label: function () {
+            return this.name || "Joe RFID 解析器";
+        },
+        outputLabels: ["RFID HEX 字串"]
+    });
+</script>
+
+<script type="text/html" data-template-name="joe-rfid-decoder">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark input[type="number"],
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] input[type="number"] {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-sliceCount"><i class="fa fa-scissors"></i> 擷取長度 (Word數)</label>
+        <input type="number" id="node-input-sliceCount" placeholder="預設 12">
+    </div>
+    <div class="form-row">
+        <label for="node-input-paddingDigits"><i class="fa fa-text-width"></i> HEX 位數補齊</label>
+        <input type="number" id="node-input-paddingDigits" placeholder="預設 2">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="joe-rfid-decoder">
+    <p>解析 Modbus 讀取的 RFID 資料，轉為大寫 HEX 連續字串。</p>
+    <h3>輸入：</h3>
+    <p><code>msg.payload</code>：Modbus 讀取出的數值陣列。</p>
+    <h3>輸出：</h3>
+    <p><code>msg.payload</code>：轉碼後的 RFID HEX 字串 (例如 12 個 Word 轉 24 位 HEX 碼)。</p>
+</script>

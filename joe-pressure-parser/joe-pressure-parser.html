@@ -1,0 +1,58 @@
+<script type="text/javascript">
+    RED.nodes.registerType('joe-pressure-parser', {
+        category: 'Joe-Tools',
+        color: '#66D9EF',
+        defaults: {
+            name: { value: "" },
+            modelType: { value: "ISE20B" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-dashboard",
+        label: function () {
+            return this.name || "Joe 壓力表解析器";
+        },
+        outputLabels: ["壓力與狀態數據"]
+    });
+</script>
+
+<script type="text/html" data-template-name="joe-pressure-parser">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark select,
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] select {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-modelType"><i class="fa fa-sliders"></i> SMC 型號</label>
+        <select id="node-input-modelType">
+            <option value="ISE20B">ISE20B (正壓型: -0.1~1 MPa)</option>
+            <option value="ZSE20B">ZSE20B (真空壓型: 0~-101 kPa)</option>
+            <option value="ZSE20BF">ZSE20BF (混合壓型: -100~100 kPa)</option>
+        </select>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="joe-pressure-parser">
+    <p>解析 SMC 壓力表傳入的 Modbus Holding Register (16-bit) 數據。</p>
+    <h3>輸入：</h3>
+    <p><code>msg.payload</code>：Modbus 讀取的單一 16-bit 數值或單元素陣列。</p>
+    <h3>輸出：</h3>
+    <p><code>msg.payload</code> 物件，包含以下資訊：</p>
+    <ul>
+        <li><code>is_connected</code>: 連線狀態</li>
+        <li><code>out1_status</code>: ON / OFF</li>
+        <li><code>out2_status</code>: ON / OFF</li>
+        <li><code>status_normal</code>: true (正常) / false (異常)</li>
+        <li><code>raw_pd</code>: 原始 PD 數值</li>
+        <li><code>actual_pressure</code>: 計算後的實際壓力值</li>
+    </ul>
+</script>

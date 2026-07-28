@@ -1,0 +1,97 @@
+<script type="text/javascript">
+    RED.nodes.registerType('ui_media_viewer', {
+        category: 'Joe-Tools',
+        color: 'rgb(119, 198, 204)',
+        defaults: {
+            group: { type: 'ui_group', required: true },
+            name: { value: '' },
+            order: { value: 0 },
+            width: {
+                value: 0, validate: function (v) {
+                    var width = v || 0;
+                    var currentGroup = $('#node-input-group').val() || this.group;
+                    var groupNode = RED.nodes.node(currentGroup);
+                    var valid = !groupNode || +width <= +groupNode.width;
+                    $("#node-input-size").toggleClass("input-error", !valid);
+                    return valid;
+                }
+            },
+            height: { value: 0 },
+            filepath: { value: '', required: false },
+            mediaType: { value: 'image' },
+            displayWidth: { value: '100%' }
+        },
+        inputs: 1,
+        outputs: 0,
+        icon: "font-awesome/fa-picture-o",
+        paletteLabel: "media viewer",
+        label: function () { return this.name || "Media Viewer"; },
+        oneditprepare: function () {
+            $("#node-input-size").elementSizer({
+                width: "#node-input-width",
+                height: "#node-input-height",
+                group: "#node-input-group"
+            });
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="ui_media_viewer">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark select,
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] select {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row" id="template-row-group">
+        <label for="node-input-group"><i class="fa fa-table"></i> Group</label>
+        <input type="text" id="node-input-group">
+    </div>
+    <div class="form-row" id="template-row-size">
+        <label><i class="fa fa-object-group"></i> Size</label>
+        <input type="hidden" id="node-input-width">
+        <input type="hidden" id="node-input-height">
+        <button class="editor-button" id="node-input-size"></button>
+    </div>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <hr>
+    <div class="form-row">
+        <label for="node-input-filepath"><i class="fa fa-file"></i> 檔案路徑</label>
+        <input type="text" id="node-input-filepath" placeholder="例如: C:\Users\bryan\Pictures\test.png">
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">*可留空。由前方的 inject 直接傳入路徑。</div>
+    </div>
+    <div class="form-row">
+        <label for="node-input-mediaType"><i class="fa fa-film"></i> 檔案格式</label>
+        <select id="node-input-mediaType" style="width:70%;">
+            <option value="image">圖片 (JPG / PNG / GIF)</option>
+            <option value="video">影片 (MP4)</option>
+        </select>
+        <div style="margin-top: 5px; font-size: 12px; color: #666;">*具備自動偵測功能，副檔名為 mp4 會自動切換為影片</div>
+    </div>
+    <div class="form-row">
+        <label for="node-input-displayWidth"><i class="fa fa-arrows-h"></i> 顯示大小</label>
+        <input type="text" id="node-input-displayWidth" placeholder="例如: 300px 或 100%">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="ui_media_viewer">
+    <p>整合讀取檔案與 Dashboard 顯示的萬用媒體節點。</p>
+    <h3>輸入觸發機制</h3>
+    <dl class="message-properties">
+        <dt>顯示媒體 (動態傳入路徑)</dt>
+        <dd>直接在 <code>msg.payload</code> 或是 <code>msg.filepath</code> 傳入你的檔案絕對路徑 (例如 <code>C:\test.mp4</code>)，即可動態切換顯示該檔案。</dd>
+        
+        <dt>關閉/隱藏媒體 (Reset)</dt>
+        <dd>若 <code>msg.payload</code> 為字串 <code>"reset"</code> 或是 <code>"clear"</code>，前端的圖片或影片就會立刻消失。</dd>
+
+        <dt class="optional">msg.mediaType <span class="property-type">string</span></dt>
+        <dd>若輸入此屬性（<code>"image"</code> 或 <code>"video"</code>），將會動態切換格式（通常不需設定，節點會根據副檔名自動判斷）。</dd>
+    </dl>
+</script>

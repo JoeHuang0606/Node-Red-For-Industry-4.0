@@ -1,0 +1,53 @@
+<script type="text/javascript">
+    RED.nodes.registerType('joe-flow-parser', {
+        category: 'Joe-Tools',
+        color: '#FD971F',
+        defaults: {
+            name: { value: "" },
+            scaleFactor: { value: 40, validate: RED.validators.number() }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-tint",
+        label: function () {
+            return this.name || "Joe 流量表解析器";
+        },
+        outputLabels: ["流量與狀態數據"]
+    });
+</script>
+
+<script type="text/html" data-template-name="joe-flow-parser">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark input[type="number"],
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] input[type="number"] {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-scaleFactor"><i class="fa fa-calculator"></i> 流量縮放係數</label>
+        <input type="number" step="0.01" id="node-input-scaleFactor" placeholder="預設 40">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="joe-flow-parser">
+    <p>解析 SMC 流量表 Modbus 讀取的 2 個 Word 暫存器數據。</p>
+    <h3>輸入：</h3>
+    <p><code>msg.payload</code>：包含 2 個 Word 的陣列，例如 <code>[word0, word1]</code>。</p>
+    <h3>輸出：</h3>
+    <p><code>msg.payload</code> 物件，包含：</p>
+    <ul>
+        <li><code>flow_rate_raw</code>: 原始流量值</li>
+        <li><code>actual_flow</code>: 實際計算後流量值</li>
+        <li><code>out1_active</code>: true / false</li>
+        <li><code>out2_active</code>: true / false</li>
+        <li><code>hardware_error</code>: 硬體錯誤旗標</li>
+    </ul>
+</script>

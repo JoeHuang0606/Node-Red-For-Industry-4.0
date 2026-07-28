@@ -1,0 +1,470 @@
+<script type="text/javascript">
+(function() {
+    var joinsListInitialised = false;
+    var suspendPreview = false;
+    var debounceTimer = null;
+    var joinsModel = []; // source of truth
+    var dbSchema = { tables: [], allColumns: [] }; // 存放自動補齊的 Schema 資料
+
+    function safe(fn){ try { return fn(); } catch(e){ console.error("mysql-extended editor error:", e); } }
+    function debounce(fn, wait) { return function(){ clearTimeout(debounceTimer); var a=arguments; debounceTimer=setTimeout(function(){ safe(function(){ fn.apply(null,a); }); }, wait||120); } }
+    function normalizeOp(op){ return op === "==" ? "=" : op; }
+    function autoAliasFor(table){ if(!table)return""; if(table==="oc_order")return"oo"; if(table==="oc_order_product")return"ooc"; var b=table.replace(/^oc_/,""); var p=b.split("_").filter(Boolean); if(!p.length) return table[0]; return p.map(function(x){return x[0];}).join(""); }
+    function qField(a,f){ if(!f)return""; if(f.indexOf(".")!==-1||/\bas\b/i.test(f)||f.indexOf("(")!==-1) return f; if(f==="*") return a+".*"; return a+"."+f; }
+
+    function formatValForPreview(v, src) {
+        if (!v) return "";
+        if (src === "flow") return "{{flow." + v + "}}";
+        if (src === "global") return "{{global." + v + "}}";
+        return v; 
+    }
+
+    function syncHiddenFromModel(){ $("#node-input-joinsJSON").val(JSON.stringify(joinsModel||[])); }
+    function renderJoinsFromModel(){ if(!$.fn.editableList){ return; } var el=$("#node-input-joins"); safe(function(){ el.editableList('empty'); }); (joinsModel||[]).forEach(function(j){ safe(function(){ el.editableList('addItem', j); }); }); }
+    function rebuildModelFromDOM(){
+        if(!$.fn.editableList) return;
+        var items=$("#node-input-joins").editableList('items'); var tmp=[];
+        items.each(function(){ var r=$(this);
+            var type=r.find(".join-type").val();
+            var table=(r.find(".join-table").val()||"").trim();
+            var alias=(r.find(".join-alias").val()||"").trim()||autoAliasFor(table);
+            var key=(r.find(".join-key").val()||"").trim();
+            var fields=(r.find(".join-fields").val()||"").trim();
+            tmp.push({type:type, table:table, alias:alias, key:key, fields:fields});
+        });
+        joinsModel=tmp; syncHiddenFromModel();
+    }
+
+    // === Autocomplete 輔助函數 ===
+    function singleAutocomplete(el, sourceData) {
+        $(el).autocomplete({ source: sourceData, minLength: 1, select: function() { setTimeout(function(){ $(el).trigger("change"); }, 10); } });
+    }
+    function bindMultiAutocomplete(el, sourceData) {
+        $(el).on("keydown", function (event) {
+            if (event.keyCode === $.ui.keyCode.TAB && $(this).data("ui-autocomplete") && $(this).data("ui-autocomplete").menu.active) { event.preventDefault(); }
+        }).autocomplete({
+            minLength: 1,
+            source: function (request, response) {
+                var terms = request.term.split(/,\s*/);
+                var term = terms.pop();
+                if (term.trim().length === 0) { response([]); return; }
+                response($.ui.autocomplete.filter(sourceData, term));
+            },
+            focus: function () { return false; },
+            select: function (event, ui) {
+                var terms = this.value.split(/,\s*/);
+                terms.pop();
+                terms.push(ui.item.value);
+                terms.push("");
+                this.value = terms.join(", ");
+                $(this).trigger("change");
+                return false;
+            }
+        });
+    }
+
+    function applyAutocompletes() {
+        if (!dbSchema || dbSchema.tables.length === 0) return;
+        // 單選 Table
+        singleAutocomplete("#node-input-mainTable, #node-input-iTable, #node-input-uTable, #node-input-dTable", dbSchema.tables);
+        // 單選 Column
+        singleAutocomplete("#node-input-whereField, #node-input-uWhereField, #node-input-dWhereField", dbSchema.allColumns);
+        // 多選 Column (支援逗號分隔)
+        bindMultiAutocomplete("#node-input-mainFields, #node-input-orderByFields, #node-input-iColumns, #node-input-uSet", dbSchema.allColumns);
+        
+        // 更新現有的 JOIN 表單
+        $(".join-table").each(function(){ singleAutocomplete(this, dbSchema.tables); });
+        $(".join-fields").each(function(){ bindMultiAutocomplete(this, dbSchema.allColumns); });
+    }
+
+    function fetchDbSchema() {
+        var dbId = $("#node-input-mydb").val();
+        if (dbId && dbId !== "_ADD_") {
+            $.getJSON("mysql-extended/schema/" + dbId, function(data) {
+                dbSchema = data;
+                applyAutocompletes();
+            }).fail(function(){
+                console.log("MySQL Schema fetch failed (Deploy node first to enable autocomplete).");
+            });
+        }
+    }
+
+    // === SQL 組合區 ===
+    function buildSelectPreview(){
+        var mt=$("#node-input-mainTable").val().trim();
+        var ma=($("#node-input-mainAlias").val().trim()||autoAliasFor(mt));
+        var mf=$("#node-input-mainFields").val().trim();
+        var wM=$("#node-input-whereManual").val().trim();
+        var wF=$("#node-input-whereField").val().trim();
+        var wO=$("#node-input-whereOp").val();
+        var wVSrc=$("#node-input-whereVSrc").val();
+        var wV=$("#node-input-whereValue").val().trim();
+        var wVFormatted = formatValForPreview(wV, wVSrc);
+
+        var obF=$("#node-input-orderByFields").val().trim();
+        var obD=($("#node-input-orderDir").val()||"ASC").toUpperCase()==="DESC"?"DESC":"ASC";
+        if(!mt) return "";
+        var mainList=mf?mf.split(",").map(function(s){return s.trim();}).filter(Boolean):[];
+        var fields=mainList.length?mainList.map(function(f){return qField(ma,f);}):[];
+        var from=mt+" AS "+ma;
+        (joinsModel||[]).forEach(function(j){
+            var table=(j.table||"").trim(); if(!table) return;
+            var type=j.type||"JOIN";
+            var key=(j.key||"id").trim();
+            var alias=(j.alias&&j.alias.trim())||autoAliasFor(table);
+            var jf=(j.fields||"");
+            from+=" "+type+" "+table+" AS "+alias+" ON "+ma+"."+key+" = "+alias+"."+key;
+            if(jf){ jf.split(",").map(function(s){return s.trim();}).filter(Boolean).forEach(function(f){ fields.push(qField(alias,f)); }); }
+        });
+        if(fields.length===0) fields=[ma+".*"];
+        var where=wM;
+        if(!where&&wF&&wO&&wV){ var q=(wF.indexOf(".")!==-1)?wF:qField(ma,wF); where=q+" "+normalizeOp(wO)+" "+wVFormatted; }
+        var ob="";
+        if(obF){ var list=obF.split(",").map(function(s){return s.trim();}).filter(Boolean); if(list.length){ var parts=list.map(function(f){ return (f.indexOf(".")!==-1||/\bas\b/i.test(f))?f:qField(ma,f); }); ob=" ORDER BY "+parts.join(", ")+" "+obD; } }
+        var sql="SELECT "+fields.join(", ")+" FROM "+from; if(where) sql+=" WHERE "+where; if(ob) sql+=ob; return sql;
+    }
+
+    function buildInsertPreview(){ var t=$("#node-input-iTable").val().trim(); var c=$("#node-input-iColumns").val().trim(); var v=$("#node-input-iValues").val().trim(); if(!t||!c||!v) return ""; return "INSERT INTO "+t+" ("+c+") VALUES ("+v+")"; }
+    
+    function buildUpdatePreview(){ 
+        var t=$("#node-input-uTable").val().trim(); 
+        var s=$("#node-input-uSet").val().trim(); 
+        var wM=$("#node-input-uWhereManual").val().trim(); 
+        var wF=$("#node-input-uWhereField").val().trim(); 
+        var wO=$("#node-input-uWhereOp").val(); 
+        var wVSrc=$("#node-input-uWhereVSrc").val();
+        var wV=$("#node-input-uWhereValue").val().trim(); 
+        var wVFormatted = formatValForPreview(wV, wVSrc);
+
+        if(!t||!s) return ""; 
+        var sql="UPDATE "+t+" SET "+s; 
+        var w=wM; 
+        if(!w&&wF&&wO&&wV){ var q=(wF.indexOf(".")!==-1)?wF:(t+"."+wF); w=q+" "+normalizeOp(wO)+" "+wVFormatted; } 
+        if(w) sql+=" WHERE "+w; return sql; 
+    }
+
+    function buildDeletePreview(){ 
+        var t=$("#node-input-dTable").val().trim(); 
+        var wM=$("#node-input-dWhereManual").val().trim(); 
+        var wF=$("#node-input-dWhereField").val().trim(); 
+        var wO=$("#node-input-dWhereOp").val(); 
+        var wVSrc=$("#node-input-dWhereVSrc").val();
+        var wV=$("#node-input-dWhereValue").val().trim(); 
+        var wVFormatted = formatValForPreview(wV, wVSrc);
+
+        if(!t) return ""; 
+        var sql="DELETE FROM "+t; 
+        var w=wM; 
+        if(!w&&wF&&wO&&wV){ var q=(wF.indexOf(".")!==-1)?wF:(t+"."+wF); w=q+" "+normalizeOp(wO)+" "+wVFormatted; } 
+        if(w) sql+=" WHERE "+w; return sql; 
+    }
+
+    var updatePreviewSticky = debounce(function(){
+        if(suspendPreview) return;
+        var auto=$("#node-input-autoGenerate").is(":checked");
+        var sqlEl=$("#node-input-sqlCustom"); var last=$("#node-input-lastAutoSQL");
+        if(!auto) return;
+        var a=$("#node-input-action").val(); var text="";
+        if(a==="SELECT") text=buildSelectPreview();
+        else if(a==="INSERT") text=buildInsertPreview();
+        else if(a==="UPDATE") text=buildUpdatePreview();
+        else if(a==="DELETE") text=buildDeletePreview();
+        if(sqlEl.val().trim()===last.val().trim()||sqlEl.val().trim()===""){ sqlEl.val(text); last.val(text); }
+    }, 120);
+
+    function showSectionByAction(){
+        var act=$("#node-input-action").val();
+        suspendPreview=true;
+        $(".section-select").toggle(act==="SELECT");
+        $(".section-insert").toggle(act==="INSERT");
+        $(".section-update").toggle(act==="UPDATE");
+        $(".section-delete").toggle(act==="DELETE");
+        if(act==="SELECT") safe(renderJoinsFromModel);
+        suspendPreview=false;
+        updatePreviewSticky();
+    }
+
+    function ensureJoinsList(){
+        try { var __el=$('#node-input-joins'); if(__el && __el.data && __el.data('editableList')) __el.editableList('destroy'); } catch(e){} joinsListInitialised=false; if(!$.fn.editableList){ return; }
+        $("#node-input-joins").editableList({
+            addItem: function(container, i, data){
+                var wrap=$('<div class="join-wrap"></div>').appendTo(container);
+                var row1=$('<div class="join-grid row-top"></div>').appendTo(wrap);
+                var row2=$('<div class="join-grid row-bottom"></div>').appendTo(wrap);
+                var typeEl=$('<select class="join-type"><option value="JOIN">INNER JOIN</option><option value="LEFT JOIN">LEFT JOIN</option></select>').appendTo(row1);
+                var tableEl=$('<input class="join-table" type="text" placeholder="JOIN table">').appendTo(row1);
+                var aliasEl=$('<input class="join-alias" type="text" placeholder="alias (自動可留空)">').appendTo(row1);
+                var keyEl=$('<input class="join-key" type="text" placeholder="key (ex: order_id)">').appendTo(row2);
+                var fieldsEl=$('<input class="join-fields" type="text" placeholder="fields (ex: product_id, price)">').appendTo(row2);
+                
+                if (data){ if(data.type) typeEl.val(data.type); if(data.table) tableEl.val(data.table); if(data.alias) aliasEl.val(data.alias); if(data.key) keyEl.val(data.key); if(data.fields) fieldsEl.val(data.fields); }
+                var updateFromDOM = debounce(function(){ rebuildModelFromDOM(); updatePreviewSticky(); }, 80);
+                wrap.find("input,select").on("input change", updateFromDOM);
+
+                // 為新加入的欄位綁定自動補齊
+                if (dbSchema && dbSchema.tables.length > 0) {
+                    singleAutocomplete(tableEl, dbSchema.tables);
+                    bindMultiAutocomplete(fieldsEl, dbSchema.allColumns);
+                }
+            },
+            removable:true, sortable:true, height: 320, addButton:true,
+            removeItem:function(){ rebuildModelFromDOM(); updatePreviewSticky(); },
+            sortItems:function(){ rebuildModelFromDOM(); updatePreviewSticky(); }
+        });
+        joinsListInitialised=true;
+    }
+
+    RED.nodes.registerType('mysql-extended', {
+        category:'Joe-Tools', color:'#e0f0ff',
+        defaults:{
+            mydb: {type:"MySQLdatabase", required:true}, // 加入資料庫連線選擇
+            dWhereVSrc:{value:"value"},
+            uWhereVSrc:{value:"value"},
+            whereVSrc:{value:"value"},
+            name:{value:""}, action:{value:"SELECT"},
+            mainTable:{value:""}, mainAlias:{value:""}, mainFields:{value:""},
+            joinsJSON:{value:"[]"},
+            whereField:{value:""}, whereOp:{value:"="}, whereValue:{value:""}, whereManual:{value:""},
+            orderByFields:{value:""}, orderDir:{value:"ASC"},
+            iTable:{value:""}, iColumns:{value:""}, iValues:{value:""},
+            uTable:{value:""}, uSet:{value:""}, uWhereManual:{value:""}, uWhereField:{value:""}, uWhereOp:{value:"="}, uWhereValue:{value:""},
+            dTable:{value:""}, dWhereManual:{value:""}, dWhereField:{value:""}, dWhereOp:{value:"="}, dWhereValue:{value:""},
+            autoGenerate:{value:true}, sqlCustom:{value:""}, lastAutoSQL:{value:""}
+        },
+        inputs:1, outputs:1, icon:"db.png",
+        label:function(){ return this.name||"MySQL SQLGen"; },
+        oneditprepare:function(){
+            safe(function(){
+                joinsListInitialised=false; ensureJoinsList();
+                var raw=$("#node-input-joinsJSON").val()||"[]"; try{ joinsModel=JSON.parse(raw); if(!Array.isArray(joinsModel)) joinsModel=[]; }catch(e){ joinsModel=[]; }
+                renderJoinsFromModel();
+                $("#node-input-sqlCustom").on("input.mysqlx", function(){ $("#node-input-autoGenerate").prop("checked", false); });
+                $("#node-input-mainTable,#node-input-mainAlias,#node-input-mainFields,#node-input-whereManual,#node-input-whereField,#node-input-whereOp,#node-input-whereValue,#node-input-whereVSrc,#node-input-orderByFields,#node-input-orderDir").on("input.mysqlx change.mysqlx", updatePreviewSticky);
+                $("#node-input-iTable,#node-input-iColumns,#node-input-iValues").on("input.mysqlx change.mysqlx", updatePreviewSticky);
+                $("#node-input-uTable,#node-input-uSet,#node-input-uWhereManual,#node-input-uWhereField,#node-input-uWhereOp,#node-input-uWhereValue,#node-input-uWhereVSrc").on("input.mysqlx change.mysqlx", updatePreviewSticky);
+                $("#node-input-dTable,#node-input-dWhereManual,#node-input-dWhereField,#node-input-dWhereOp,#node-input-dWhereValue,#node-input-dWhereVSrc").on("input.mysqlx change.mysqlx", updatePreviewSticky);
+                $("#node-input-action,#node-input-autoGenerate").on("change.mysqlx", function(){ showSectionByAction(); });
+                
+                showSectionByAction();
+                updatePreviewSticky();
+                
+                // 資料庫選擇變更時，抓取 Schema 供 AutoComplete 使用
+                $("#node-input-mydb").change(fetchDbSchema);
+                // 首次開啟節點時主動抓一次
+                fetchDbSchema();
+            });
+        },
+        oneditsave:function(){
+            try{ var __el=$('#node-input-joins'); if(__el.data('editableList')) __el.editableList('destroy'); }catch(e){} joinsListInitialised=false;
+            safe(function(){ syncHiddenFromModel(); $("#node-input-lastAutoSQL").val($("#node-input-sqlCustom").val()); });
+        }
+    });
+})();
+</script>
+
+<script type="text/html" data-template-name="mysql-extended">
+    <style>
+      .section { border: 1px solid var(--red-ui-form-input-border, #ddd); padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; background: var(--red-ui-form-background, #f8f9fb); }
+      .section h4 { margin: 0 0 8px 0; font-weight: 600; }
+      .row-wide { display:flex; gap:14px; align-items:center; }
+      .row-wide > * { flex: 1; }
+      #node-input-joins .red-ui-editableList-item-content { padding: 6px; }
+      #node-input-joins .join-wrap { display:block; width:100%; }
+      #node-input-joins .join-grid { display:grid; grid-template-columns: 180px 1fr 180px; gap:10px; align-items:center; width:100%; }
+      #node-input-joins .row-bottom { grid-template-columns: 220px 1fr; }
+      #node-input-joins input[type="text"], #node-input-joins select { width:100%; box-sizing:border-box; }
+      #node-input-joins { border:1px solid var(--red-ui-form-input-border, #e3e3e3); border-radius:8px; background:var(--red-ui-form-input-background, #fafafa); }
+      #node-input-joins .red-ui-editableList-container { max-height: 320px; overflow-y:auto; }
+      #node-input-joins .red-ui-editableList-item-content { padding:8px 8px; }
+      #node-input-joins .join-grid.row-top { display:grid; grid-template-columns: 140px 1fr 160px; gap:10px; align-items:center; }
+      #node-input-joins .join-grid.row-bottom { display:grid; grid-template-columns: 220px 1fr; gap:10px; align-items:center; }
+      
+      /* Autocomplete Dropdown Z-Index Fix */
+      .ui-autocomplete { max-height: 250px; overflow-y: auto; overflow-x: hidden; z-index: 10000 !important; }
+
+      /* 深色模式適配 */
+      .red-ui-editor-theme-dark .section,
+      [data-theme="dark"] .section {
+        background: #282828 !important;
+        border-color: #444 !important;
+        color: #e1e1e1 !important;
+      }
+      .red-ui-editor-theme-dark #node-input-joins,
+      [data-theme="dark"] #node-input-joins {
+        background: #202020 !important;
+        border-color: #444 !important;
+      }
+      .red-ui-editor-theme-dark input[type="text"],
+      .red-ui-editor-theme-dark select,
+      .red-ui-editor-theme-dark textarea,
+      [data-theme="dark"] input[type="text"],
+      [data-theme="dark"] select,
+      [data-theme="dark"] textarea {
+        background-color: #1e1e1e !important;
+        color: #f0f0f0 !important;
+        border-color: #555 !important;
+      }
+      .red-ui-editor-theme-dark .form-tips,
+      [data-theme="dark"] .form-tips {
+        color: #aaa !important;
+      }
+    </style>
+
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Node Name" style="width:100%">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-mydb"><i class="fa fa-database"></i> Database</label>
+        <input type="text" id="node-input-mydb" style="width:100%">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-action"><i class="fa fa-cogs"></i> Action</label>
+        <select id="node-input-action" style="width:260px">
+            <option value="SELECT">SELECT</option>
+            <option value="INSERT">INSERT</option>
+            <option value="UPDATE">UPDATE</option>
+            <option value="DELETE">DELETE</option>
+        </select>
+    </div>
+
+    <input type="hidden" id="node-input-joinsJSON">
+
+    <div class="section section-select">
+      <h4>SELECT</h4>
+      <div class="form-row row-wide">
+        <div>
+          <label for="node-input-mainTable"><i class="fa fa-table"></i> Main table</label>
+          <input type="text" id="node-input-mainTable" placeholder="例如：oc_order" style="width:100%">
+        </div>
+        <div style="max-width:240px">
+          <label for="node-input-mainAlias"><i class="fa fa-i-cursor"></i> Alias</label>
+          <input type="text" id="node-input-mainAlias" placeholder="預設自動（例如 oc_order → oo）" style="width:100%">
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="node-input-mainFields"><i class="fa fa-columns"></i> Fields from main</label>
+        <input type="text" id="node-input-mainFields" placeholder="例如：order_id, total, name（自動加 alias 前綴）" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-link"></i> JOINS</label>
+        <ol id="node-input-joins" style="min-height: 36px;; max-height: 340px; overflow-y: auto; display:block; margin-bottom:8px"></ol>
+        <p class="form-tips">按 <b>Add</b> 逐筆新增 JOIN。每筆：類型 / JOIN table / alias；第二列：key / fields（欄位會自動加上該 alias 前綴）。</p>
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-filter"></i> WHERE</label>
+        <div class="row-wide">
+            <input type="text" id="node-input-whereField" placeholder="欄位（不填別名時自動使用 main alias）">
+            <select id="node-input-whereOp" style="max-width:120px">
+                <option value=">">&gt;</option>
+                <option value=">=">&ge;</option>
+                <option value="<">&lt;</option>
+                <option value="<=">&le;</option>
+                <option value="==">==</option>
+                <option value="=">=</option>
+            </select>
+            <input type="text" id="node-input-whereValue" placeholder="值（字串需自行加引號）">
+            <select id="node-input-whereVSrc"><option value="value">一般值</option><option value="flow">flow</option><option value="global">global</option></select>
+        </div>
+        <p class="form-tips">或使用下方「手動 WHERE」覆蓋：</p>
+        <input type="text" id="node-input-whereManual" placeholder="手動 WHERE（直接輸入條件，不含 WHERE）" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-sort"></i> ORDER BY</label>
+        <div class="row-wide">
+            <input type="text" id="node-input-orderByFields" placeholder="欄位（可多個，用逗號分隔）">
+            <select id="node-input-orderDir" style="max-width:140px">
+                <option value="ASC">ASC</option>
+                <option value="DESC">DESC</option>
+            </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="section section-insert">
+      <h4>INSERT</h4>
+      <div class="form-row">
+        <label for="node-input-iTable"><i class="fa fa-table"></i> Table</label>
+        <input type="text" id="node-input-iTable" placeholder="例如：oc_order" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label for="node-input-iColumns"><i class="fa fa-columns"></i> Columns</label>
+        <input type="text" id="node-input-iColumns" placeholder="例如：order_id, total, status" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label for="node-input-iValues"><i class="fa fa-pencil"></i> Values</label>
+        <input type="text" id="node-input-iValues" placeholder="例如：{{msg.order_id}}, {{msg.total}}, 'complete'" style="width:100%">
+      </div>
+    </div>
+
+    <div class="section section-update">
+      <h4>UPDATE</h4>
+      <div class="form-row">
+        <label for="node-input-uTable"><i class="fa fa-table"></i> Table</label>
+        <input type="text" id="node-input-uTable" placeholder="例如：oc_order" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label for="node-input-uSet"><i class="fa fa-edit"></i> SET</label>
+        <input type="text" id="node-input-uSet" placeholder="例如：status='complete', total={{msg.total}}" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-filter"></i> WHERE</label>
+        <div class="row-wide">
+            <input type="text" id="node-input-uWhereField" placeholder="欄位（會自動補 table.欄位）">
+            <select id="node-input-uWhereOp" style="max-width:120px">
+                <option value=">">&gt;</option>
+                <option value=">=">&ge;</option>
+                <option value="<">&lt;</option>
+                <option value="<=">&le;</option>
+                <option value="==">==</option>
+                <option value="=">=</option>
+            </select>
+            <input type="text" id="node-input-uWhereValue" placeholder="值">
+            <select id="node-input-uWhereVSrc"><option value="value">一般值</option><option value="flow">flow</option><option value="global">global</option></select>
+        </div>
+        <p class="form-tips">或使用下方「手動 WHERE」覆蓋：</p>
+        <input type="text" id="node-input-uWhereManual" placeholder="手動 WHERE（直接輸入條件，不含 WHERE）" style="width:100%">
+      </div>
+    </div>
+
+    <div class="section section-delete">
+      <h4>DELETE</h4>
+      <div class="form-row">
+        <label for="node-input-dTable"><i class="fa fa-table"></i> Table</label>
+        <input type="text" id="node-input-dTable" placeholder="例如：oc_order" style="width:100%">
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-filter"></i> WHERE</label>
+        <div class="row-wide">
+            <input type="text" id="node-input-dWhereField" placeholder="欄位（會自動補 table.欄位）">
+            <select id="node-input-dWhereOp" style="max-width:120px">
+                <option value=">">&gt;</option>
+                <option value=">=">&ge;</option>
+                <option value="<">&lt;</option>
+                <option value="<=">&le;</option>
+                <option value="==">==</option>
+                <option value="=">=</option>
+            </select>
+            <input type="text" id="node-input-dWhereValue" placeholder="值">
+            <select id="node-input-dWhereVSrc"><option value="value">一般值</option><option value="flow">flow</option><option value="global">global</option></select>
+        </div>
+        <p class="form-tips">或使用下方「手動 WHERE」覆蓋：</p>
+        <input type="text" id="node-input-dWhereManual" placeholder="手動 WHERE（直接輸入條件，不含 WHERE）" style="width:100%">
+      </div>
+    </div>
+
+    <div class="section">
+      <h4>SQL Preview / Editor</h4>
+      <div class="form-row">
+        <label for="node-input-autoGenerate"><i class="fa fa-bolt"></i> Auto-generate</label>
+        <input type="checkbox" id="node-input-autoGenerate" style="vertical-align:middle" checked>
+        <span>自動由上方設定產生 SQL；你在下方編輯框輸入時會自動關閉以保留你的修改。</span>
+      </div>
+      <div class="form-row">
+        <textarea id="node-input-sqlCustom" style="width:100%; height:190px; font-family:monospace;" spellcheck="false" placeholder="這裡顯示組合後的 SQL；可手動修改，會被保存（按 Done）"></textarea>
+        <input type="hidden" id="node-input-lastAutoSQL">
+      </div>
+    </div>
+</script>

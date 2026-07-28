@@ -1,0 +1,55 @@
+<script type="text/javascript">
+    RED.nodes.registerType('joe-ultrasonic-parser', {
+        category: 'Joe-Tools',
+        color: '#AE81FF',
+        defaults: {
+            name: { value: "" },
+            parseMode: { value: "auto" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-arrows-v",
+        label: function () {
+            return this.name || "Joe 超聲波解析器";
+        },
+        outputLabels: ["距離數據"]
+    });
+</script>
+
+<script type="text/html" data-template-name="joe-ultrasonic-parser">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark select,
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] select {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-parseMode"><i class="fa fa-cog"></i> 解析模式</label>
+        <select id="node-input-parseMode">
+            <option value="auto">自動判斷 (Auto)</option>
+            <option value="modbus">Modbus 暫存器模式 (除以 1024)</option>
+            <option value="mqtt">MQTT 2-Byte 模式 (除以 4)</option>
+        </select>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="joe-ultrasonic-parser">
+    <p>解析超聲波感測器距離數據，支援 Modbus 暫存器與 MQTT Byte 陣列兩種來源。</p>
+    <h3>模式說明：</h3>
+    <dl>
+        <dt>Modbus 暫存器模式</dt>
+        <dd>讀取 16-bit 暫存器整數，換算為小數距離 (<code>raw / 1024.0</code>)。</dd>
+        <dt>MQTT 2-Byte 模式</dt>
+        <dd>讀取 <code>msg.payload.in_data_cha</code> 的 2 位元組陣列，換算為以 mm 為單位之小數距離 (<code>raw / 4.0</code>)。</dd>
+    </dl>
+    <h3>輸出：</h3>
+    <p><code>msg.payload</code> 物件，包含 <code>raw</code> 與 <code>distance</code>。</p>
+</script>

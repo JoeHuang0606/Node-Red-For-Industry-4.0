@@ -1,0 +1,62 @@
+<script type="text/javascript">
+    RED.nodes.registerType('modbus-ascii-packer', {
+        category: 'Joe-Tools',
+        color: '#E2D96E',
+        defaults: {
+            name: { value: "" },
+            totalWords: { value: 32, validate: RED.validators.number() },
+            maxValidWords: { value: 8, validate: RED.validators.number() },
+            delayTime: { value: 1.0, validate: RED.validators.number() },
+            triggerValue: { value: 1, validate: RED.validators.number() }
+        },
+        inputs: 1,
+        outputs: 2,
+        icon: "font-awesome/fa-barcode",
+        label: function () {
+            return this.name || "Modbus ASCII 打包器";
+        },
+        outputLabels: ["Modbus Data (Uint16Array)", "CMD Trigger Signal"]
+    });
+</script>
+
+<script type="text/html" data-template-name="modbus-ascii-packer">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark input[type="number"],
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] input[type="number"] {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-totalWords"><i class="fa fa-list"></i> 總 Word 數</label>
+        <input type="number" id="node-input-totalWords" placeholder="預設 32">
+    </div>
+    <div class="form-row">
+        <label for="node-input-maxValidWords"><i class="fa fa-cut"></i> 有效 Word 數</label>
+        <input type="number" id="node-input-maxValidWords" placeholder="預設 8 (16字元)">
+    </div>
+    <div class="form-row">
+        <label for="node-input-delayTime"><i class="fa fa-clock-o"></i> 觸發延遲 (秒)</label>
+        <input type="number" step="0.1" id="node-input-delayTime" placeholder="預設 1.0">
+    </div>
+    <div class="form-row">
+        <label for="node-input-triggerValue"><i class="fa fa-bolt"></i> 觸發數值</label>
+        <input type="number" id="node-input-triggerValue" placeholder="預設 1">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="modbus-ascii-packer">
+    <p>將傳入的字串轉換為 Modbus Holding Register 可寫入的 Uint16Array 格式。</p>
+    <h3>輸出：</h3>
+    <ol>
+        <li><b>Output 1</b>: 轉換後的 Uint16Array (對應 0x0401 資料寫入)。</li>
+        <li><b>Output 2</b>: 延遲特定時間後發送觸發值 (對應 0x0400 命令觸發)。</li>
+    </ol>
+</script>

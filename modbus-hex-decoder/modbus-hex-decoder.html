@@ -1,0 +1,58 @@
+<script type="text/javascript">
+    RED.nodes.registerType('modbus-hex-decoder', {
+        category: 'Joe-Tools',
+        color: '#E2D96E',
+        defaults: {
+            name: { value: "" },
+            sliceCount: { value: 12, validate: RED.validators.number() },
+            paddingDigits: { value: 2, validate: RED.validators.number() }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-file-code-o",
+        label: function () {
+            return this.name || "Modbus Hex 解碼器";
+        },
+        outputLabels: ["HEX 字串"]
+    });
+</script>
+
+<script type="text/html" data-template-name="modbus-hex-decoder">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark input[type="number"],
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] input[type="number"] {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-sliceCount"><i class="fa fa-scissors"></i> 擷取長度</label>
+        <input type="number" id="node-input-sliceCount" placeholder="預設 12">
+    </div>
+    <div class="form-row">
+        <label for="node-input-paddingDigits"><i class="fa fa-text-width"></i> Hex 位數補齊</label>
+        <input type="number" id="node-input-paddingDigits" placeholder="預設 2 ( Byte 用 2，Register 用 4 )">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="modbus-hex-decoder">
+    <p>將傳入的陣列或 Buffer (如 Modbus 讀取的數據) 擷取前 N 個元素轉換為大寫 Hex 16進位連續字串。</p>
+    <h3>設定項目：</h3>
+    <dl>
+        <dt>擷取長度</dt>
+        <dd>對陣列進行 <code>slice(0, N)</code>，預設為 12。</dd>
+        <dt>Hex 位數補齊</dt>
+        <dd>每個數字轉為 16 進位時填補的最小位數，預設為 2 (例如 <code>0A</code>)。若為 16-bit 暫存器可設為 4 (例如 <code>000A</code>)。</dd>
+    </dl>
+    <h3>輸入：</h3>
+    <p><code>msg.payload</code>：陣列 (Array, Uint16Array) 或 Buffer。</p>
+    <h3>輸出：</h3>
+    <p><code>msg.payload</code>：組合後的 Hex 大寫字串。</p>
+</script>

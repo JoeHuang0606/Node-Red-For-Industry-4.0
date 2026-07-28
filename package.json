@@ -1,0 +1,43 @@
+{
+    "name": "node-red-contrib-joe-tools",
+    "version": "1.0.2",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/JoeHuang0606/Node-Red-For-Industry-4.0.git"
+    },
+    "description": "Node-RED toolkit for industrial automation, sensor data parsing, RFID, S7 PLC, MySQL and utility tools.",
+    "main": "modbus-ascii-packer/modbus-ascii-packer.js",
+    "node-red": {
+        "nodes": {
+            "modbus-ascii-packer": "modbus-ascii-packer/modbus-ascii-packer.js",
+            "modbus-hex-decoder": "modbus-hex-decoder/modbus-hex-decoder.js",
+            "joe-rfid-decoder": "joe-rfid-decoder/joe-rfid-decoder.js",
+            "joe-pressure-parser": "joe-pressure-parser/joe-pressure-parser.js",
+            "joe-flow-parser": "joe-flow-parser/joe-flow-parser.js",
+            "joe-ultrasonic-parser": "joe-ultrasonic-parser/joe-ultrasonic-parser.js",
+            "my-mysql-extended": "node-red-contrib-mysql-extended-test/mysql-extended.js",
+            "rfid-helper": "node-red-contrib-rfid-helper/rfid-lazy.js",
+            "node-red-flowgobal-change": "node-red-flowgobal-change/variable-change.js",
+            "node-red-ui_media_viewer": "node-red-ui_media_viewer/ui_media_viewer.js",
+            "s7complus": "node-red-contrib-s7-plus/nodes/s7complus.js"
+        }
+    },
+    "keywords": [
+        "node-red",
+        "joe-tools",
+        "modbus",
+        "rfid",
+        "plc",
+        "s7",
+        "mysql",
+        "media",
+        "sensor",
+        "industrial",
+        "automation"
+    ],
+    "engines": {
+        "node": ">=14.0.0"
+    },
+    "author": "Joe",
+    "license": "ISC"
+}

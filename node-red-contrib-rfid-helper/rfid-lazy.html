@@ -1,0 +1,165 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rfid-lazy',{
+        category: 'Joe-Tools',
+        color: '#87A980',
+        defaults: {
+            name: {value:""},
+            mode: {value:"READ"},
+            readTriggerMode: {value:"manual"},
+            autoReadInterval: {value:"1000", validate:RED.validators.number()},
+            writeStrategy: {value:"manual"}, 
+            offset: {value:"0", validate:RED.validators.number()},
+            length: {value:"4", validate:RED.validators.number()},
+            writeData: {value:""},
+            writeDataType: {value:"str"},
+            enableDeparture: {value:"false"},
+            departureTimeout: {value:"3", validate:RED.validators.number()} 
+        },
+        inputs: 1,
+        outputs: 3,
+        outputLabels: ["連至 Flex Getter", "連至 Flex Write", "最終輸出結果"],
+        icon: "font-awesome/fa-microchip",
+        label: function() {
+            return this.name || "RFID 智慧模組";
+        },
+        oneditprepare: function() {
+            $("#node-input-writeData").typedInput({
+                default: 'str',
+                typeField: $("#node-input-writeDataType"),
+                types: ['str', 'msg', 'flow', 'global']
+            });
+
+            function toggleOptions() {
+                var mode = $("#node-input-mode").val();
+                var triggerMode = $("#node-input-readTriggerMode").val();
+                var enableDep = $("#node-input-enableDeparture").val();
+                var writeStrat = $("#node-input-writeStrategy").val();
+
+                if (mode === "WRITE") {
+                    $(".write-strategy-options").show();
+                    $(".write-options").show();
+                    $(".read-options").hide();
+                    $(".auto-read-options").hide();
+                    if (writeStrat === "auto") {
+                        $(".length-row").hide();
+                    } else {
+                        $(".length-row").show();
+                    }
+                } else if (mode === "READ") {
+                    $(".write-strategy-options").hide();
+                    $(".write-options").hide();
+                    $(".read-options").show();
+                    $(".length-row").show();
+                    if (triggerMode === "auto") {
+                        $(".auto-read-options").show();
+                    } else {
+                        $(".auto-read-options").hide();
+                    }
+                } else { 
+                    $(".write-strategy-options").hide();
+                    $(".write-options").hide();
+                    $(".read-options").hide();
+                    $(".auto-read-options").hide();
+                    $(".length-row").show();
+                }
+
+                if (enableDep === "true") {
+                    $(".departure-timeout-row").show();
+                } else {
+                    $(".departure-timeout-row").hide();
+                }
+            }
+            
+            $("#node-input-mode").on("change", toggleOptions);
+            $("#node-input-readTriggerMode").on("change", toggleOptions);
+            $("#node-input-enableDeparture").on("change", toggleOptions);
+            $("#node-input-writeStrategy").on("change", toggleOptions);
+            toggleOptions();
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="rfid-lazy">
+    <style>
+        .red-ui-editor-theme-dark input[type="text"],
+        .red-ui-editor-theme-dark input[type="number"],
+        .red-ui-editor-theme-dark select,
+        [data-theme="dark"] input[type="text"],
+        [data-theme="dark"] input[type="number"],
+        [data-theme="dark"] select {
+            background-color: #1e1e1e !important;
+            color: #f0f0f0 !important;
+            border-color: #555 !important;
+        }
+    </style>
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> 節點名稱</label>
+        <input type="text" id="node-input-name" placeholder="自訂名稱">
+    </div>
+    <div class="form-row">
+        <label for="node-input-mode"><i class="fa fa-sliders"></i> 執行模式</label>
+        <select id="node-input-mode">
+            <option value="READ">Read (讀取 USER 區)</option>
+            <option value="WRITE">Write (寫入 USER 區)</option>
+            <option value="CLEAR">Clear (批次清空 USER 區)</option>
+        </select>
+    </div>
+
+    <div class="form-row read-options">
+        <label for="node-input-readTriggerMode"><i class="fa fa-refresh"></i> 讀取觸發方式</label>
+        <select id="node-input-readTriggerMode">
+            <option value="manual">手動 (需外部 Inject 觸發)</option>
+            <option value="auto">自動 (持續偵測 Tag)</option>
+        </select>
+    </div>
+    <div class="form-row auto-read-options">
+        <label for="node-input-autoReadInterval"><i class="fa fa-clock-o"></i> 自動偵測頻率</label>
+        <input type="number" id="node-input-autoReadInterval" placeholder="毫秒 (預設: 1000)">
+    </div>
+    
+    <hr>
+    <div class="form-row">
+        <label for="node-input-enableDeparture"><i class="fa fa-bell-o"></i> 移開提醒</label>
+        <select id="node-input-enableDeparture">
+            <option value="false">停用</option>
+            <option value="true">啟用 (Tag 移開後發送通知)</option>
+        </select>
+    </div>
+    <div class="form-row departure-timeout-row">
+        <label for="node-input-departureTimeout"><i class="fa fa-hourglass-half"></i> 延遲時間 (秒)</label>
+        <input type="number" id="node-input-departureTimeout" placeholder="輸入秒數 (例如: 3)">
+    </div>
+    <hr>
+
+    <div class="form-row write-strategy-options">
+        <label for="node-input-writeStrategy"><i class="fa fa-cogs"></i> 寫入模式</label>
+        <select id="node-input-writeStrategy">
+            <option value="manual">手動設定長度 (超出長度自動截斷)</option>
+            <option value="auto">全自動計算 (依字串長度無限分批)</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-offset"><i class="fa fa-step-forward"></i> 起始位址</label>
+        <input type="number" id="node-input-offset" placeholder="Word 偏移量">
+    </div>
+    <div class="form-row length-row">
+        <label for="node-input-length"><i class="fa fa-arrows-h"></i> 執行長度</label>
+        <input type="number" id="node-input-length" placeholder="讀取最大 16, 寫/清最大 64">
+    </div>
+
+    <div class="form-row write-options">
+        <label for="node-input-writeData"><i class="fa fa-pencil"></i> 寫入數值</label>
+        <input type="text" id="node-input-writeData">
+        <input type="hidden" id="node-input-writeDataType">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="rfid-lazy">
+    <p>這是一個全自動的 RFID 讀寫控制模組 V9 (絕對穩定版)。</p>
+    <h3>模式說明：</h3>
+    <ul>
+        <li><strong>讀取 (Read)：</strong> 為確保通訊絕對穩定，單次讀取極限強制鎖定為 16 個 Word。</li>
+        <li><strong>寫入 (Write) 自動分批：</strong> 你只需給定字串內容，大腦將自動計算長度，並在背景以「高延遲防撞機制」接力分批寫入，直到超長資料完美寫入完畢！</li>
+    </ul>
+</script>
