@@ -274,6 +274,14 @@
                 selectedLi = null;
             }
 
+            function s7complusBrowseAjaxPromise(path, data) {
+                return new Promise(function (resolve, reject) {
+                    s7complusBrowseAjax(ctx, path, data)
+                        .done(resolve)
+                        .fail(reject);
+                });
+            }
+
             function addSelected() {
                 if (!selectedLi) {
                     RED.notify('Select a symbol in the tree', 'warning');
@@ -281,22 +289,67 @@
                 }
                 const node = selectedLi.data('browseNode');
                 if (!node) return;
-                if (!node.isLeaf) {
-                    RED.notify('Expand the tree and select a leaf symbol (scalar or array element)', 'warning');
-                    return;
-                }
+
                 setAddButtonDisabled(true);
-                s7complusBrowseAjax(ctx, 'resolve', { nodeId: node.id, browseSessionId: browseSessionId })
-                    .done(function (row) {
-                        if (options.onResolved) {
-                            options.onResolved(row);
+
+                function collectLeafNodes(targetNode) {
+                    if (targetNode.isLeaf) {
+                        return Promise.resolve([targetNode]);
+                    }
+                    return s7complusBrowseAjaxPromise('children', { nodeId: targetNode.id, browseSessionId: browseSessionId })
+                        .then(function (res) {
+                            const children = res.nodes || [];
+                            const promises = children.map(function (ch) {
+                                if (ch.isLeaf) {
+                                    return Promise.resolve([ch]);
+                                } else if (ch.hasChildren || ch.nodeKind === 'struct' || ch.nodeKind === 'array' || ch.nodeKind === 'arrpage' || ch.nodeKind === 'block' || ch.nodeKind === 'area') {
+                                    return collectLeafNodes(ch);
+                                } else {
+                                    return Promise.resolve([]);
+                                }
+                            });
+                            return Promise.all(promises).then(function (results) {
+                                return Array.prototype.concat.apply([], results);
+                            });
+                        });
+                }
+
+                let loadingNotify = null;
+                if (!node.isLeaf) {
+                    loadingNotify = RED.notify('Expanding and adding symbols under ' + node.label + '...', 'info');
+                }
+
+                collectLeafNodes(node)
+                    .then(function (leafNodes) {
+                        if (!leafNodes.length) {
+                            RED.notify('No selectable leaf symbols found under ' + node.label, 'warning');
+                            return;
                         }
-                        RED.notify('Added: ' + row.name, 'success');
+                        const resolvePromises = leafNodes.map(function (leaf) {
+                            return s7complusBrowseAjaxPromise('resolve', { nodeId: leaf.id, browseSessionId: browseSessionId })
+                                .then(function (row) {
+                                    if (options.onResolved) {
+                                        options.onResolved(row);
+                                    }
+                                    return row;
+                                });
+                        });
+                        return Promise.all(resolvePromises).then(function (rows) {
+                            if (node.isLeaf) {
+                                RED.notify('Added: ' + rows[0].name, 'success');
+                            } else {
+                                RED.notify('Added ' + rows.length + ' symbol(s) under ' + node.label, 'success');
+                            }
+                        });
                     })
-                    .fail(function (jq) {
-                        RED.notify('Resolve failed: ' + ((jq.responseJSON && jq.responseJSON.error) || jq.statusText), 'error');
+                    .catch(function (jq) {
+                        const err = (jq && jq.responseJSON && jq.responseJSON.error) || (jq && jq.statusText) || (jq && jq.message) || jq;
+                        RED.notify('Resolve failed: ' + err, 'error');
                     })
                     .always(function () {
+                        if (loadingNotify && typeof loadingNotify.close === 'function') {
+                            loadingNotify.close();
+                        }
                         setAddButtonDisabled(false);
                     });
             }
