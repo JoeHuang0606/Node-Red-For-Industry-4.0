@@ -1,4 +1,4 @@
-# 📊 變數視覺化管理員 (`node-red-flowgobal-change`)
+# 📊 變數視覺化管理員 (`variable-change`)
 
 > **分類**：`Joe-Tools`  
 > **難易度**：⭐小白友善

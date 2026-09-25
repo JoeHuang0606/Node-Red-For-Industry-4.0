@@ -1,6 +1,6 @@
 {
     "name": "node-red-contrib-joe-tools",
-    "version": "1.1.3",
+    "version": "1.1.4",
     "repository": {
         "type": "git",
         "url": "https://github.com/JoeHuang0606/Node-Red-For-Industry-4.0.git"
@@ -16,9 +16,9 @@
             "joe-flow-parser": "joe-flow-parser/joe-flow-parser.js",
             "joe-ultrasonic-parser": "joe-ultrasonic-parser/joe-ultrasonic-parser.js",
             "joe-power-parser": "joe-power-parser/joe-power-parser.js",
-            "my-mysql-extended": "node-red-contrib-mysql-extended-test/mysql-extended.js",
-            "rfid-helper": "node-red-contrib-rfid-helper/rfid-lazy.js",
-            "node-red-flowgobal-change": "node-red-flowgobal-change/variable-change.js",
+            "mysql-extended": "mysql-extended/mysql-extended.js",
+            "rfid-lazy": "rfid-lazy/rfid-lazy.js",
+            "variable-change": "variable-change/variable-change.js",
             "node-red-ui_media_viewer": "node-red-ui_media_viewer/ui_media_viewer.js",
             "s7complus": "node-red-contrib-s7-plus/nodes/s7complus.js"
         }

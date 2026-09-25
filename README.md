@@ -51,14 +51,14 @@ npm install node-red-contrib-joe-tools
 | 節點名稱 | 標記名稱 | 功能簡述 | 說明文件 |
 | :--- | :--- | :--- | :--- |
 | **Siemens S7-Plus** | `s7complus` | 西門子 S7-1200 / S7-1500 PLC 符號名稱 (Symbolic) 通訊套件 | [README](./node-red-contrib-s7-plus/nodes/README.md) |
-| **RFID 智慧模組** | `rfid-helper` | 工業級 RFID 卡片防碰撞分批寫入與卡片離開通知 | [README](./node-red-contrib-rfid-helper/README.md) |
+| **RFID 智慧模組** | `rfid-lazy` | 工業級 RFID 卡片防碰撞分批寫入與卡片離開通知 | [README](./rfid-lazy/README.md) |
 
 ### 🗄️ 資料庫與 UI 工具
 
 | 節點名稱 | 標記名稱 | 功能簡述 | 說明文件 |
 | :--- | :--- | :--- | :--- |
-| **MySQL SQLGen** | `my-mysql-extended` | 免寫程式碼，透過視覺化介面點選產生 SELECT / INSERT SQL | [README](./node-red-contrib-mysql-extended-test/README.md) |
-| **全自動變數管理** | `node-red-flowgobal-change` | 拖曳式與視覺化 Flow / Global 全域變數管理員 | [README](./node-red-flowgobal-change/README.md) |
+| **MySQL SQLGen** | `mysql-extended` | 免寫程式碼，透過視覺化介面點選產生 SELECT / INSERT SQL | [README](./mysql-extended/README.md) |
+| **全自動變數管理** | `variable-change` | 拖曳式與視覺化 Flow / Global 全域變數管理員 | [README](./variable-change/README.md) |
 | **Media Viewer** | `node-red-ui_media_viewer` | Dashboard 動態圖片與 MP4 影片播放檢視器 | [README](./node-red-ui_media_viewer/README.md) |
 
 ---

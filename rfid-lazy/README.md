@@ -1,4 +1,4 @@
-# 🏷️ RFID 智慧讀寫模組 (`rfid-helper`)
+# 🏷️ RFID 智慧讀寫模組 (`rfid-lazy`)
 
 > **分類**：`Joe-Tools`  
 > **難易度**：⭐小白友善

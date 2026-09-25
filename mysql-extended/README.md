@@ -1,4 +1,4 @@
-# 🗄️ MySQL 視覺化 SQL 產生器 (`my-mysql-extended`)
+# 🗄️ MySQL 視覺化 SQL 產生器 (`mysql-extended`)
 
 > **分類**：`Joe-Tools`  
 > **難易度**：⭐小白友善
